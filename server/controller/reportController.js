@@ -4,7 +4,7 @@ const _ = require('lodash');
 class ReportController {
     generateReport(filter) {
         return new Promise((resolve, reject) => { 
-            if(filter.year && !filter.month && !filter.ExpenseType) {
+            if(filter.year && !filter.month && !filter.expenseType) {
                 // report for year all expenses
                 let totalIncome = 0;
                 let totalExpenditure = 0;
@@ -85,7 +85,7 @@ class ReportController {
                         });
                     });
                 });
-            }else if(filter.year && filter.month && !filter.ExpenseType){
+            }else if(filter.year && filter.month && !filter.expenseType){
                 // report for month of a year of all expenses
                 let totalIncome = 0;
                 let totalExpenditure = 0;
@@ -138,6 +138,67 @@ class ReportController {
                         resolve(finalReport);
                     });
                 });
+            } else if(filter.expenseType) {
+                // report for expense type for asked years
+                if(filter.year) {
+                    // "2021-2021"
+                    const startYear = parseInt(filter.year.split('-')[0]);
+                    const endYear = parseInt(filter.year.split('-')[1]);
+                    if(startYear && endYear) {
+                        Expense.aggregate([
+                            {"$match":{"$and":[
+                                {year: {"$lte": endYear}},
+                                {year: {"$gte": startYear}}
+                            ]}}
+                            ,{
+                                "$lookup": {
+                                    "from": "expenseType",
+                                    "localField": "expenseType",
+                                    "foreignField": "_id",
+                                    "as": "expenseType"
+                                }
+                            }
+                            ,{
+                                "$unwind": "$expenseType"
+                            },
+                            {
+                                "$project": {
+                                    year:1,
+                                    month:1,
+                                    amount:1,
+                                    expenseType: '$expenseType.value'
+                                }
+                            },
+                            {
+                                "$match": {
+                                    "expenseType": filter.expenseType
+                                }
+                            }
+                            ,{
+                                "$group":{
+                                    "_id":{"year":"$year", "month": "$month"},
+                                    "total":{"$sum":"$amount"},
+                                    "year": {"$first":"$year"},
+                                    "month": {"$first":"$month"},
+                                    "expenseType": {"$first":"$expenseType"},
+                                }
+                            }
+                            ,{
+                                "$project": {
+                                    expenseType:1,
+                                    year:1,
+                                    month:1,
+                                    total:1
+                                }
+                            }
+                        ]).exec((err, reportData) => {
+                            if(err) {reject(err)}
+                            resolve(reportData);
+                        });
+                    } else {
+                        reject({message: 'Invalid report parameters.start and end year needed for report for an expense type'});
+                    }
+                }
             }else {
                  reject("unsupported report requested");
             }
